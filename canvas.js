@@ -32,26 +32,136 @@ class OICanvas {
         for(var i = 0; i < x; i++) {
             for(var j = 0; j < y; i++) {
                 this.partitions.push({
-                                        'x': i * pWidth,
-                                        'y': j * pHeight,
-                                        'w': pWidth,
-                                        'h': pHeight
-                                    });
+                    'x': i * pWidth,
+                    'y': j * pHeight,
+                    'w': pWidth,
+                    'h': pHeight
+                });
             }
         }
     }
 
-    /** Clears a context */
+    /** Redraw Functions */
+
+    /**
+     * Clears a given context
+     * @param {Object} context - The context to clear
+     */
     clear(context) {
         context.clearRect(0, 0, this.width, this.height);
     }
 
+    /**
+     * Clears a list of given partitions
+     * @param {Object} context
+     * @param {Object[]} partitions
+     */
     clearPartitions(context, partitions) {
         for(var i = 0; i < partitions.length; i++) {
             var pa = partitions[i];
             context.clearRect(pa.x, pa.y, pa.w, pa.h);
         }
     }
+
+    /**
+     * Draws a canvas onto a given context
+     * @param {Object} context - The context to draw onto
+     * @param {Object} canvas - The canvas to draw
+     */
+    drawCanvas(context, source) {
+        context.drawImage(source, 0, 0);
+    }
+
+    drawPartitions(context, canvas, partitions) {
+        for(var i = 0; i < partitions.length; i++) {
+            var p = partitions[i];
+            context.drawImage(source,
+                p.x, p.y, p.w, p.h,
+                p.x, p.y, p.w, p.h);
+        }
+    }
+
+    /** Import/Export Functions */
+
+    /**
+     * Saves canvas to disk
+     */
+    saveToDisk() {
+        var data = this.toImage().src.replace('image/png','image/octet-stream');
+        window.location.href = data;
+    }
+
+    /**
+     * Saves canvas to localStorage
+     */
+    saveToLocalstorage() {
+        localStorage.setItem('canvas-' + this.name, this.canvas.toDataURL());
+    }
+
+    /**
+     * Returns an image element containing the canvas contents
+     */
+    toImage() {
+        var image = new Image();
+        image.src = this.canvas.toDataURL();
+        return image;
+    }
+
+    /**
+     * Loads a DataURL into the canvas at 0,0
+     * @param {string} data - The DataUrl
+     */
+    loadDataURL(data) {
+        var image = new Image();
+        image.onload = (() => {
+            this.ctx.drawImage(image, 0, 0);
+            this.bCtx.drawImage(image, 0, 0);
+        });
+        image.src = data;
+    }
+
+    /**
+     * Draws a blob onto the canvas
+     * @param {object} blob - The blob to draw
+     * @param {number} x - X coordinate to draw at
+     * @param {number} y - Y coordinate to draw at
+     */
+    drawBlob(blob, x, y) {
+        var reader = new FileReader();
+        reader.onload = (() => {
+            var img = new Image();
+            img.src = reader.result;
+            img.onload = (() => {
+                this.ctx.drawImage(img, x, y);
+                this.bCtx.drawImage(img, x, y);
+            });
+        });
+        reader.readAsDataURL(blob);
+    }
+
+    /**
+     * Loads a canvas from localstorage
+     * @param {String} name - Name of the canvas
+     */
+    static loadFromLocalStorage(name) {
+        /* Attempt to get the canvas from localstorage */
+        if (localStorage.getItem('canvas-' + name)) {
+            /* Load the B64 image from localstorage */
+            var img = new Image;
+            img.src = localStorage.getItem('canvas');
+
+            /* Draw our image onto a canvas */
+            var canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+
+            /* Create a new OICanvas with the loaded image */
+            return new OICanvas(canvas, name);
+        }
+        return null;
+    }
+
+    /* Stroke Functions */
 }
 
 /**
@@ -68,9 +178,9 @@ class OIStroke {
 
     /**
      * Adds a (x, y, p) point to the stroke
-     * @param {Float} x - The x-coordinate
-     * @param {Float} y - The y-coordinate
-     * @param {Float} p - The pressure at the given point
+     * @param {Number} x - The x-coordinate
+     * @param {Number} y - The y-coordinate
+     * @param {Number} p - The pressure at the given point
      */
     addPoint(x, y, p) {
         this.path.push({
