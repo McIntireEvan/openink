@@ -22,15 +22,19 @@ class OICanvas {
         this.sCtx = this.strokeCanvas.getContext('2d');
 
         this.strokes = {};
-        this.partition = [];
+        this.partitions = [];
         this._isRedrawing = false;
+
+        this.partition(12, 8);
+
+        this._debug = false;
     }
 
     partition(x, y) {
         var pWidth = (this.width * 1.0) / x;
         var pHeight = (this.height * 1.0) / y;
         for(var i = 0; i < x; i++) {
-            for(var j = 0; j < y; i++) {
+            for(var j = 0; j < y; j++) {
                 this.partitions.push({
                     'x': i * pWidth,
                     'y': j * pHeight,
@@ -72,12 +76,19 @@ class OICanvas {
         context.drawImage(source, 0, 0);
     }
 
+    /**
+     * Draws given partitions onto a context from a canvas
+     * @param {*} context
+     * @param {*} canvas
+     * @param {*} partitions
+     */
     drawPartitions(context, canvas, partitions) {
         for(var i = 0; i < partitions.length; i++) {
             var p = partitions[i];
-            context.drawImage(source,
+            context.drawImage(canvas,
                 p.x, p.y, p.w, p.h,
-                p.x, p.y, p.w, p.h);
+                p.x, p.y, p.w, p.h
+            );
         }
     }
 
@@ -162,6 +173,164 @@ class OICanvas {
     }
 
     /* Stroke Functions */
+
+    /**
+     * Ensures that all the ctx values are what they should be
+     * Checks before setting as to not affect performance too much
+     * @param {object} brush - The brush to match to values to
+     *
+     * TODO: Expand to add more brush customization
+     */
+    setContextValues(brush, ctx) {
+        //if (ctx.globalAlpha != tool.opacity) { ctx.globalAlpha = tool.opacity; }
+        if (ctx.lineJoin != 'round') { ctx.lineJoin = 'round'; }
+        if (ctx.lineCap != 'round') { ctx.lineCap = 'round'; }
+        if (ctx.lineWidth != (brush.size * 2)) { ctx.lineWidth = brush.size * 2; }
+        if (ctx.strokeStyle != brush.color) { ctx.strokeStyle = brush.color };
+        if (ctx.fillStyle != brush.color) { ctx.fillStyle = brush.color; }
+        if (ctx.globalCompositeOperation != brush.operation) {
+            ctx.globalCompositeOperation = brush.operation;
+        }
+        return ctx;
+    }
+
+    /**
+     * Starts a new stroke
+     * @param {Object} brush - The brush to use
+     * @param {Number} x - x-coord
+     * @param {Number} y - y-coord
+     * @param {Number} p - pressure
+     * @param {String} id - The id of the stroke
+     */
+    beginStroke(brush, x, y, p, id) {
+        var s = new OIStroke(JSON.parse(JSON.stringify(brush)), this.partitions);
+        s.addPoint(x, y, p);
+        this.strokes[id] = s;
+    }
+
+    updateStroke(x, y, p, id) {
+        this.strokes[id].addPoint(x, y, p);
+    }
+
+    completeStrokeById(id) {
+        if(this.strokes[id] != undefined) {
+            this.completeStroke(this.strokes[id])
+        }
+    }
+
+    /**
+     * Finalizes the stroke by drawing it onto the buffer canvas
+     * @param {Object} stroke - The stroke to finalize
+     */
+    completeStroke(stroke) {
+        this.clearPartitions(this.ctx, stroke.changed);
+        this.drawPartitions(this.ctx, this.backCanvas, stroke.changed);
+        this.drawStroke(stroke);
+
+        this.clear(this.bCtx);
+        this.drawCanvas(this.bCtx, this.canvas);
+    }
+
+    /**
+     * Updates strokes by their ids
+     * @param {string[]} - The stroke IDs to draw
+     */
+    doStrokes(ids) {
+        /** Lock the canvas if we're redrawing */
+        if(this._isRedrawing) { return; }
+        this._isRedrawing = true;
+
+        var p = [];
+        for(var i = 0; i < ids.length; i++)
+        {
+            var stroke = this.strokes[ids[i]];
+            for(var j = 0; j < stroke.changed.length; j++) {
+                if(p.indexOf(stroke.changed[j]) == -1) {
+                    p.push(stroke.changed[j]);
+                }
+            }
+        }
+
+        this.clearPartitions(this.ctx, p);
+        this.drawPartitions(this.ctx, this.backCanvas, p);
+        for(var i = 0; i < ids.length; i++)
+        {
+            this.drawStroke(this.strokes[ids[i]]);
+        }
+        this._isRedrawing = false;
+    }
+
+    /**
+     * Draws a stroke onto the canvas
+     * TODO: document the inside of this function
+     * @param {Object} stroke - The Stroke to draw
+     */
+    drawStroke(stroke) {
+        if(this._debug) { console.time('draw'); }
+        this.sCtx.save();
+        this.sCtx.clearRect(0, 0, this.width, this.height);
+        this.sCtx = this.setContextValues(stroke.tool, this.sCtx); //Ensures that all the context values are correct
+
+        this.sCtx.beginPath();
+        if(stroke.path.length > 3) {
+            var len = stroke.path.length;
+            var controls = stroke.controlPoints.concat(
+                stroke.getControlPoints(stroke.path[len-3].x,
+                                        stroke.path[len-3].y,
+                                        stroke.path[len-2].x,
+                                        stroke.path[len-2].y,
+                                        stroke.path[len-1].x,
+                                        stroke.path[len-1].y,
+                                        .3));
+            var cLen = controls.length;
+
+            this.sCtx.beginPath();
+            this.sCtx.lineWidth = stroke.tool.size  * ( 2 * stroke.path[0].p);
+            this.sCtx.moveTo(stroke.path[0].x,stroke.path[0].y);
+            this.sCtx.quadraticCurveTo(controls[0],controls[1],stroke.path[1].x,stroke.path[1].y);
+            this.sCtx.stroke();
+            this.sCtx.closePath();
+
+            for(var i = 0; i < len - 1; i += 1) {
+                this.sCtx.beginPath();
+                this.sCtx.moveTo(stroke.path[i].x, stroke.path[i].y);
+                this.sCtx.lineWidth = (stroke.tool.size) * (stroke.path[i].p * 2);
+                //controls.length is x.length * 4
+                this.sCtx.bezierCurveTo(controls[4*i-2],controls[4*i-1],controls[4*i],controls[4*i+1],stroke.path[i + 1].x,stroke.path[i + 1].y);
+                this.sCtx.stroke();
+                this.sCtx.closePath();
+            }
+            /*this.sCtx.beginPath();
+            this.sCtx.lineWidth = stroke.tool.size * stroke.path[len - 2].p * 2;
+            this.sCtx.moveTo(stroke.path[len-2].x,stroke.path[len-2].y);
+            this.sCtx.quadraticCurveTo(controls[cLen - 2],controls[cLen-1],stroke.path[len-1].x,stroke.path[len-1].y);
+            this.sCtx.stroke();
+            this.sCtx.closePath();*/
+        } else {
+            //There are too few points to do a bezier curve, so we just draw the point
+            this.sCtx.lineWidth = 1;
+            this.sCtx.arc(stroke.path[0].x, stroke.path[0].y, stroke.tool.size * (stroke.path[0].p), 0, 2 * Math.PI, false);
+            this.sCtx.fill();
+        }
+        this.sCtx.stroke();
+
+        this.sCtx.globalCompositeOperation = "destination-out";
+        this.sCtx.globalAlpha = 1 - stroke.tool.opacity;
+        this.sCtx.fillStyle = "#ffffff";
+
+        this.sCtx.fillRect(0, 0, this.width, this.height);
+        this.sCtx.restore();
+
+        this.ctx.save();
+        if(stroke.tool.name == "Eraser") {
+            this.ctx.globalCompositeOperation = "destination-out";
+            this.ctx.globalAlpha = 1;
+        }
+
+        this.drawCanvas(this.ctx, this.strokeCanvas);
+        this.ctx.restore();
+        if(this._debug) { console.timeEnd('draw'); }
+    }
 }
 
 /**
@@ -188,16 +357,15 @@ class OIStroke {
             'y': y,
             'p': p
         });
-
         /**
          * Search for the partition that this point is in
          */
         for(var i = 0; i < this.partitions.length; i++) {
             var pX = this.partitions[i].x;
-            var py = this.partitions[i].y;
+            var pY = this.partitions[i].y;
             if(x > pX && y > pY
-            && x < this.partitions[i].width * pX
-            && y < this.partitions[i].height * pY) {
+            && x < this.partitions[i].w + pX
+            && y < this.partitions[i].h + pY) {
                 this.changed.push(this.partitions[i]);
                 break;
             }
