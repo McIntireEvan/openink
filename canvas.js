@@ -227,8 +227,8 @@ class OICanvas {
         this.drawPartitions(this.ctx, this.backCanvas, stroke.changed);
         this.drawStroke(stroke);
 
-        this.clear(this.bCtx);
-        this.drawCanvas(this.bCtx, this.canvas);
+        this.clearPartitions(this.bCtx, stroke.changed);
+        this.drawPartitions(this.bCtx, this.canvas, stroke.changed);
     }
 
     /**
@@ -285,7 +285,7 @@ class OICanvas {
             var cLen = controls.length;
 
             this.sCtx.beginPath();
-            this.sCtx.lineWidth = stroke.tool.size  * ( 2 * stroke.path[0].p);
+            this.sCtx.lineWidth = stroke.tool.size * stroke.path[0].p;
             this.sCtx.moveTo(stroke.path[0].x,stroke.path[0].y);
             this.sCtx.quadraticCurveTo(controls[0],controls[1],stroke.path[1].x,stroke.path[1].y);
             this.sCtx.stroke();
@@ -294,7 +294,7 @@ class OICanvas {
             for(var i = 0; i < len - 1; i += 1) {
                 this.sCtx.beginPath();
                 this.sCtx.moveTo(stroke.path[i].x, stroke.path[i].y);
-                this.sCtx.lineWidth = (stroke.tool.size) * (stroke.path[i].p * 2);
+                this.sCtx.lineWidth = (stroke.tool.size) * (stroke.path[i].p);
                 //controls.length is x.length * 4
                 this.sCtx.bezierCurveTo(controls[4*i-2],controls[4*i-1],controls[4*i],controls[4*i+1],stroke.path[i + 1].x,stroke.path[i + 1].y);
                 this.sCtx.stroke();
@@ -309,7 +309,7 @@ class OICanvas {
         } else {
             //There are too few points to do a bezier curve, so we just draw the point
             this.sCtx.lineWidth = 1;
-            this.sCtx.arc(stroke.path[0].x, stroke.path[0].y, stroke.tool.size * (stroke.path[0].p), 0, 2 * Math.PI, false);
+            this.sCtx.arc(stroke.path[0].x, stroke.path[0].y, stroke.tool.size * (1/2) * (stroke.path[0].p), 0, 2 * Math.PI, false);
             this.sCtx.fill();
         }
         this.sCtx.stroke();
@@ -363,11 +363,21 @@ class OIStroke {
         for(var i = 0; i < this.partitions.length; i++) {
             var pX = this.partitions[i].x;
             var pY = this.partitions[i].y;
-            if(x > pX && y > pY
-            && x < this.partitions[i].w + pX
-            && y < this.partitions[i].h + pY) {
+            var pW = this.partitions[i].w;
+            var pH = this.partitions[i].h;
+
+            var dist = [];
+
+            var cX = pX + (pW / 2);
+            var cY = pY + (pH / 2);
+
+            var r = this.tool.size;
+
+            if(Math.abs(cX - x) > (pW/2) + r) { continue; }
+            if(Math.abs(cY - y) > (pH/2) + r) { continue; }
+
+            if(this.changed.indexOf(this.partitions[i]) == -1) {
                 this.changed.push(this.partitions[i]);
-                break;
             }
         }
 
