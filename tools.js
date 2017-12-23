@@ -6,11 +6,14 @@
 class OITool {
     constructor(name) {
         this.name = name;
+        this.active = false;
     }
 
     addCallback(element, event, callback) {
         document.getElementById(element)
-                .addEventListener(event, evt => { callback (evt) });
+                .addEventListener(event, evt => {
+                    if(this.active) { callback (evt) }
+                });
     }
 }
 
