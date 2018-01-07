@@ -39,7 +39,8 @@ class OICanvas {
                     'x': i * pWidth,
                     'y': j * pHeight,
                     'w': pWidth,
-                    'h': pHeight
+                    'h': pHeight,
+                    'i': ((y * i) + j)
                 });
             }
         }
@@ -86,6 +87,17 @@ class OICanvas {
         for(var i = 0; i < partitions.length; i++) {
             var p = partitions[i];
             context.drawImage(canvas,
+                p.x, p.y, p.w, p.h,
+                p.x, p.y, p.w, p.h
+            );
+        }
+    }
+
+    redrawPartitions(dest, src, partitions) {
+        for(var i = 0; i < partitions.length; i++) {
+            var p = partitions[i];
+            dest.clearRect(p.x, p.y, p.w, p.h);
+            dest.drawImage(src,
                 p.x, p.y, p.w, p.h,
                 p.x, p.y, p.w, p.h
             );
@@ -208,10 +220,21 @@ class OICanvas {
         this.strokes[id] = s;
     }
 
+    /**
+     * Updates a stroke with a (x, y) point and pressure using an ID
+     * @param {Number} x
+     * @param {Number} y
+     * @param {Number} p
+     * @param {String} id
+     */
     updateStroke(x, y, p, id) {
         this.strokes[id].addPoint(x, y, p);
     }
 
+    /**
+     * Completes a stroke
+     * @param {String} id
+     */
     completeStrokeById(id) {
         if(this.strokes[id] != undefined) {
             this.completeStroke(this.strokes[id])
@@ -220,15 +243,13 @@ class OICanvas {
 
     /**
      * Finalizes the stroke by drawing it onto the buffer canvas
+     * TODO: Optimize, redraw only needed partitions
      * @param {Object} stroke - The stroke to finalize
      */
     completeStroke(stroke) {
-        this.clearPartitions(this.ctx, stroke.changed);
-        this.drawPartitions(this.ctx, this.backCanvas, stroke.changed);
+        this.redrawPartitions(this.ctx, this.backCanvas, this.partitions);
         this.drawStroke(stroke);
-
-        this.clearPartitions(this.bCtx, stroke.changed);
-        this.drawPartitions(this.bCtx, this.canvas, stroke.changed);
+        this.redrawPartitions(this.bCtx, this.canvas, this.partitions);
     }
 
     /**
@@ -251,8 +272,7 @@ class OICanvas {
             }
         }
 
-        this.clearPartitions(this.ctx, p);
-        this.drawPartitions(this.ctx, this.backCanvas, p);
+        this.redrawPartitions(this.ctx, this.backCanvas, p);
         for(var i = 0; i < ids.length; i++)
         {
             this.drawStroke(this.strokes[ids[i]]);
@@ -269,7 +289,8 @@ class OICanvas {
         if(this._debug) { console.time('draw'); }
         this.sCtx.save();
         this.sCtx.clearRect(0, 0, this.width, this.height);
-        this.sCtx = this.setContextValues(stroke.tool, this.sCtx); //Ensures that all the context values are correct
+        /* Sets the correct context properties */
+        this.sCtx = this.setContextValues(stroke.tool, this.sCtx);
 
         this.sCtx.beginPath();
         if(stroke.path.length > 3) {
@@ -300,12 +321,6 @@ class OICanvas {
                 this.sCtx.stroke();
                 this.sCtx.closePath();
             }
-            /*this.sCtx.beginPath();
-            this.sCtx.lineWidth = stroke.tool.size * stroke.path[len - 2].p * 2;
-            this.sCtx.moveTo(stroke.path[len-2].x,stroke.path[len-2].y);
-            this.sCtx.quadraticCurveTo(controls[cLen - 2],controls[cLen-1],stroke.path[len-1].x,stroke.path[len-1].y);
-            this.sCtx.stroke();
-            this.sCtx.closePath();*/
         } else {
             //There are too few points to do a bezier curve, so we just draw the point
             this.sCtx.lineWidth = 1;
@@ -371,7 +386,7 @@ class OIStroke {
             var cX = pX + (pW / 2);
             var cY = pY + (pH / 2);
 
-            var r = this.tool.size;
+            var r = this.tool.size * p * (1/2);
 
             if(Math.abs(cX - x) > (pW/2) + r) { continue; }
             if(Math.abs(cY - y) > (pH/2) + r) { continue; }
